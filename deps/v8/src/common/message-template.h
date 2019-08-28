@@ -146,7 +146,8 @@ namespace internal {
   T(NotSuperConstructorAnonymousClass,                                         \
     "Super constructor % of anonymous class is not a constructor")             \
   T(NotIntegerSharedTypedArray, "% is not an integer shared typed array.")     \
-  T(NotInt32SharedTypedArray, "% is not an int32 shared typed array.")         \
+  T(NotInt32OrBigInt64SharedTypedArray,                                        \
+    "% is not an int32 or BigInt64 shared typed array.")                       \
   T(ObjectGetterExpectingFunction,                                             \
     "Object.prototype.__defineGetter__: Expecting function")                   \
   T(ObjectGetterCallable, "Getter must be a function: %")                      \
@@ -574,7 +575,10 @@ namespace internal {
     "FinalizationGroup.prototype.register: target and holdings must not be "   \
     "same")                                                                    \
   T(WeakRefsWeakRefConstructorTargetMustBeObject,                              \
-    "WeakRef: target must be an object")
+    "WeakRef: target must be an object")                                       \
+  T(OptionalChainingNoNew, "Invalid optional chain from new expression")       \
+  T(OptionalChainingNoSuper, "Invalid optional chain from super property")     \
+  T(OptionalChainingNoTemplate, "Invalid tagged template on optional chain")
 
 enum class MessageTemplate {
 #define TEMPLATE(NAME, STRING) k##NAME,

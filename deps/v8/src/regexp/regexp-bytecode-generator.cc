@@ -171,10 +171,19 @@ void RegExpBytecodeGenerator::CheckGreedyLoop(
   EmitOrLink(on_tos_equals_current_position);
 }
 
-void RegExpBytecodeGenerator::LoadCurrentCharacter(int cp_offset,
-                                                   Label* on_failure,
-                                                   bool check_bounds,
-                                                   int characters) {
+void RegExpBytecodeGenerator::LoadCurrentCharacterImpl(int cp_offset,
+                                                       Label* on_failure,
+                                                       bool check_bounds,
+                                                       int characters,
+                                                       int eats_at_least) {
+  DCHECK_GE(eats_at_least, characters);
+  if (eats_at_least > characters && check_bounds) {
+    DCHECK(is_uint24(cp_offset + eats_at_least));
+    Emit(BC_CHECK_CURRENT_POSITION, cp_offset + eats_at_least);
+    EmitOrLink(on_failure);
+    check_bounds = false;  // Load below doesn't need to check.
+  }
+
   DCHECK_LE(kMinCPOffset, cp_offset);
   DCHECK_GE(kMaxCPOffset, cp_offset);
   int bytecode;

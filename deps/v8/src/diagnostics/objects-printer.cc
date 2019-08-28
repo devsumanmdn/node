@@ -130,11 +130,6 @@ void HeapObject::HeapObjectPrint(std::ostream& os) {  // NOLINT
       HeapNumber::cast(*this).HeapNumberPrint(os);
       os << "\n";
       break;
-    case MUTABLE_HEAP_NUMBER_TYPE:
-      os << "<mutable ";
-      MutableHeapNumber::cast(*this).MutableHeapNumberPrint(os);
-      os << ">\n";
-      break;
     case BIGINT_TYPE:
       BigInt::cast(*this).BigIntPrint(os);
       os << "\n";
@@ -1340,7 +1335,17 @@ void JSFinalizationGroup::JSFinalizationGroupPrint(std::ostream& os) {
   os << "\n - native_context: " << Brief(native_context());
   os << "\n - cleanup: " << Brief(cleanup());
   os << "\n - active_cells: " << Brief(active_cells());
+  Object active_cell = active_cells();
+  while (active_cell.IsWeakCell()) {
+    os << "\n   - " << Brief(active_cell);
+    active_cell = WeakCell::cast(active_cell).next();
+  }
   os << "\n - cleared_cells: " << Brief(cleared_cells());
+  Object cleared_cell = cleared_cells();
+  while (cleared_cell.IsWeakCell()) {
+    os << "\n   - " << Brief(cleared_cell);
+    cleared_cell = WeakCell::cast(cleared_cell).next();
+  }
   os << "\n - key_map: " << Brief(key_map());
   JSObjectPrintBody(os, *this);
 }
@@ -1350,12 +1355,6 @@ void JSFinalizationGroupCleanupIterator::
   JSObjectPrintHeader(os, *this, "JSFinalizationGroupCleanupIterator");
   os << "\n - finalization_group: " << Brief(finalization_group());
   JSObjectPrintBody(os, *this);
-}
-
-void FinalizationGroupCleanupJobTask::FinalizationGroupCleanupJobTaskPrint(
-    std::ostream& os) {
-  PrintHeader(os, "FinalizationGroupCleanupJobTask");
-  os << "\n - finalization_group: " << Brief(finalization_group());
 }
 
 void JSWeakMap::JSWeakMapPrint(std::ostream& os) {  // NOLINT
@@ -1466,13 +1465,16 @@ void JSFunction::JSFunctionPrint(std::ostream& os) {  // NOLINT
   }
   if (WasmExportedFunction::IsWasmExportedFunction(*this)) {
     WasmExportedFunction function = WasmExportedFunction::cast(*this);
-    os << "\n - WASM instance "
-       << reinterpret_cast<void*>(function.instance().ptr());
-    os << "\n - WASM function index " << function.function_index();
+    os << "\n - WASM instance: " << Brief(function.instance());
+    os << "\n - WASM function index: " << function.function_index();
+  }
+  if (WasmJSFunction::IsWasmJSFunction(*this)) {
+    WasmJSFunction function = WasmJSFunction::cast(*this);
+    os << "\n - WASM wrapper around: " << Brief(function.GetCallable());
   }
   shared().PrintSourceCode(os);
   JSObjectPrintBody(os, *this);
-  os << "\n - feedback vector: ";
+  os << " - feedback vector: ";
   if (!shared().HasFeedbackMetadata()) {
     os << "feedback metadata is not available in SFI\n";
   } else if (has_feedback_vector()) {
@@ -1506,6 +1508,7 @@ void SharedFunctionInfo::SharedFunctionInfoPrint(std::ostream& os) {  // NOLINT
     os << "\n - inferred name: " << Brief(inferred_name());
   }
   os << "\n - kind: " << kind();
+  os << "\n - syntax kind: " << syntax_kind();
   if (needs_home_object()) {
     os << "\n - needs_home_object";
   }
@@ -1522,13 +1525,6 @@ void SharedFunctionInfo::SharedFunctionInfoPrint(std::ostream& os) {  // NOLINT
   // Script files are often large, hard to read.
   // os << "\n - script =";
   // script()->Print(os);
-  if (is_named_expression()) {
-    os << "\n - named expression";
-  } else if (is_anonymous_expression()) {
-    os << "\n - anonymous expression";
-  } else if (is_declaration()) {
-    os << "\n - declaration";
-  }
   os << "\n - function token position: " << function_token_position();
   os << "\n - start position: " << StartPosition();
   os << "\n - end position: " << EndPosition();
@@ -2065,7 +2061,7 @@ void WasmCapiFunctionData::WasmCapiFunctionDataPrint(
     std::ostream& os) {  // NOLINT
   PrintHeader(os, "WasmCapiFunctionData");
   os << "\n - call_target: " << call_target();
-  os << "\n - embedder_data: " << embedder_data();
+  os << "\n - embedder_data: " << Brief(embedder_data());
   os << "\n - wrapper_code: " << Brief(wrapper_code());
   os << "\n - serialized_signature: " << Brief(serialized_signature());
   os << "\n";
@@ -2459,10 +2455,6 @@ void TaggedImpl<kRefType, StorageType>::Print(std::ostream& os) {
 #endif  // OBJECT_PRINT
 
 void HeapNumber::HeapNumberPrint(std::ostream& os) { os << value(); }
-
-void MutableHeapNumber::MutableHeapNumberPrint(std::ostream& os) {
-  os << value();
-}
 
 // TODO(cbruni): remove once the new maptracer is in place.
 void Name::NameShortPrint() {

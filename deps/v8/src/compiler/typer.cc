@@ -787,7 +787,13 @@ Type Typer::Visitor::TypeParameter(Node* node) {
   return Type::NonInternal();
 }
 
-Type Typer::Visitor::TypeOsrValue(Node* node) { return Type::Any(); }
+Type Typer::Visitor::TypeOsrValue(Node* node) {
+  if (OsrValueIndexOf(node->op()) == Linkage::kOsrContextSpillSlotIndex) {
+    return Type::OtherInternal();
+  } else {
+    return Type::Any();
+  }
+}
 
 Type Typer::Visitor::TypeRetain(Node* node) { UNREACHABLE(); }
 
@@ -998,10 +1004,6 @@ Type Typer::Visitor::TypeTypedObjectState(Node* node) {
 }
 
 Type Typer::Visitor::TypeCall(Node* node) { return Type::Any(); }
-
-Type Typer::Visitor::TypeCallWithCallerSavedRegisters(Node* node) {
-  UNREACHABLE();
-}
 
 Type Typer::Visitor::TypeProjection(Node* node) {
   Type const type = Operand(node, 0);
@@ -1564,6 +1566,7 @@ Type Typer::Visitor::JSCallTyper(Type fun, Typer* t) {
     case Builtins::kMathPow:
     case Builtins::kMathMax:
     case Builtins::kMathMin:
+    case Builtins::kMathHypot:
       return Type::Number();
     case Builtins::kMathImul:
       return Type::Signed32();
@@ -2363,6 +2366,8 @@ Type Typer::Visitor::TypeAssertType(Node* node) { UNREACHABLE(); }
 Type Typer::Visitor::TypeConstant(Handle<Object> value) {
   return Type::NewConstant(typer_->broker(), value, zone());
 }
+
+Type Typer::Visitor::TypeJSGetIterator(Node* node) { return Type::Any(); }
 
 }  // namespace compiler
 }  // namespace internal

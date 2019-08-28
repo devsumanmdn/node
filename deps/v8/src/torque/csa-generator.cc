@@ -56,14 +56,10 @@ Stack<std::string> CSAGenerator::EmitBlock(const Block* block) {
 }
 
 void CSAGenerator::EmitSourcePosition(SourcePosition pos, bool always_emit) {
-  std::string file = SourceFileMap::AbsolutePath(pos.source);
+  const std::string& file = SourceFileMap::AbsolutePath(pos.source);
   if (always_emit || !previous_position_.CompareStartIgnoreColumn(pos)) {
     // Lines in Torque SourcePositions are zero-based, while the
     // CodeStubAssembler and downwind systems are one-based.
-    for (auto& c : file) {
-      if (c == '\\')
-        c = '/';
-    }
     out_ << "    ca_.SetSourcePosition(\"" << file << "\", "
          << (pos.start.line + 1) << ");\n";
     previous_position_ = pos;
@@ -309,8 +305,7 @@ void CSAGenerator::EmitInstruction(const CallCsaMacroInstruction& instruction,
   std::string catch_name =
       PreCallableExceptionPreparation(instruction.catch_block);
   out_ << "    ";
-  bool needs_flattening =
-      return_type->IsStructType() || return_type->IsReferenceType();
+  bool needs_flattening = return_type->IsStructType();
   if (needs_flattening) {
     out_ << "std::tie(";
     PrintCommaSeparatedList(out_, results);
@@ -770,11 +765,6 @@ void CSAGenerator::EmitCSAValue(VisitResult result,
                    out);
     }
     out << "}";
-  } else if (result.type()->IsReferenceType()) {
-    DCHECK_EQ(2, result.stack_range().Size());
-    size_t offset = result.stack_range().begin().offset;
-    out << "CodeStubAssembler::Reference{" << values.Peek(BottomOffset{offset})
-        << ", " << values.Peek(BottomOffset{offset + 1}) << "}";
   } else {
     DCHECK_EQ(1, result.stack_range().Size());
     out << "compiler::TNode<" << result.type()->GetGeneratedTNodeTypeName()

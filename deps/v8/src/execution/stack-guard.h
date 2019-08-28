@@ -7,6 +7,7 @@
 
 #include "include/v8-internal.h"
 #include "src/base/atomicops.h"
+#include "src/common/globals.h"
 
 namespace v8 {
 namespace internal {
@@ -89,6 +90,8 @@ class V8_EXPORT_PRIVATE StackGuard final {
   // stack overflow, then handle the interruption accordingly.
   Object HandleInterrupts();
 
+  static constexpr int kSizeInBytes = 7 * kSystemPointerSize;
+
  private:
   bool CheckInterrupt(InterruptFlag flag);
   void RequestInterrupt(InterruptFlag flag);
@@ -129,8 +132,7 @@ class V8_EXPORT_PRIVATE StackGuard final {
     // Clear.
     void Clear();
 
-    // Returns true if the heap's stack limits should be set, false if not.
-    bool Initialize(Isolate* isolate);
+    void Initialize(Isolate* isolate);
 
     // The stack limit is split into a JavaScript and a C++ stack limit. These
     // two are the same except when running on a simulator where the C++ and
@@ -165,7 +167,7 @@ class V8_EXPORT_PRIVATE StackGuard final {
     }
 
     InterruptsScope* interrupt_scopes_;
-    int interrupt_flags_;
+    intptr_t interrupt_flags_;
   };
 
   // TODO(isolates): Technically this could be calculated directly from a
@@ -179,6 +181,8 @@ class V8_EXPORT_PRIVATE StackGuard final {
 
   DISALLOW_COPY_AND_ASSIGN(StackGuard);
 };
+
+STATIC_ASSERT(StackGuard::kSizeInBytes == sizeof(StackGuard));
 
 }  // namespace internal
 }  // namespace v8

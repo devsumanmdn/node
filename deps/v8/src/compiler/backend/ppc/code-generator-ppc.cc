@@ -1104,19 +1104,14 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       DCHECK_EQ(LeaveRC, i.OutputRCBit());
       break;
     case kArchDeoptimize: {
-      int deopt_state_id =
+      DeoptimizationExit* exit =
           BuildTranslation(instr, -1, 0, OutputFrameStateCombine::Ignore());
-      CodeGenResult result =
-          AssembleDeoptimizerCall(deopt_state_id, current_source_position_);
+      CodeGenResult result = AssembleDeoptimizerCall(exit);
       if (result != kSuccess) return result;
       break;
     }
     case kArchRet:
       AssembleReturn(instr->InputAt(0));
-      DCHECK_EQ(LeaveRC, i.OutputRCBit());
-      break;
-    case kArchStackPointer:
-      __ mr(i.OutputRegister(), sp);
       DCHECK_EQ(LeaveRC, i.OutputRCBit());
       break;
     case kArchFramePointer:
@@ -1130,6 +1125,12 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
         __ mr(i.OutputRegister(), fp);
       }
       break;
+    case kArchStackPointerGreaterThan: {
+      constexpr size_t kValueIndex = 0;
+      DCHECK(instr->InputAt(kValueIndex)->IsRegister());
+      __ cmpl(sp, i.InputRegister(kValueIndex), cr0);
+      break;
+    }
     case kArchTruncateDoubleToI:
       __ TruncateDoubleToI(isolate(), zone(), i.OutputRegister(),
                            i.InputDoubleRegister(0), DetermineStubCallMode());
@@ -2515,6 +2516,8 @@ void CodeGenerator::AssembleReturn(InstructionOperand* pop) {
 }
 
 void CodeGenerator::FinishCode() {}
+
+void CodeGenerator::PrepareForDeoptimizationExits(int deopt_count) {}
 
 void CodeGenerator::AssembleMove(InstructionOperand* source,
                                  InstructionOperand* destination) {

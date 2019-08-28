@@ -123,10 +123,10 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithArrayLike(
   // Check if {arguments_list} is an (unmodified) arguments object.
   TNode<Map> sloppy_arguments_map = CAST(
       LoadContextElement(native_context, Context::SLOPPY_ARGUMENTS_MAP_INDEX));
-  GotoIf(WordEqual(arguments_list_map, sloppy_arguments_map), &if_arguments);
+  GotoIf(TaggedEqual(arguments_list_map, sloppy_arguments_map), &if_arguments);
   TNode<Map> strict_arguments_map = CAST(
       LoadContextElement(native_context, Context::STRICT_ARGUMENTS_MAP_INDEX));
-  GotoIf(WordEqual(arguments_list_map, strict_arguments_map), &if_arguments);
+  GotoIf(TaggedEqual(arguments_list_map, strict_arguments_map), &if_arguments);
 
   // Check if {arguments_list} is a fast JSArray.
   Branch(IsJSArrayMap(arguments_list_map), &if_array, &if_runtime);
@@ -173,7 +173,7 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithArrayLike(
         js_arguments, JSArgumentsObjectWithLength::kLengthOffset);
     TNode<FixedArrayBase> elements = LoadElements(js_arguments);
     TNode<Smi> elements_length = LoadFixedArrayBaseLength(elements);
-    GotoIfNot(WordEqual(length, elements_length), &if_runtime);
+    GotoIfNot(TaggedEqual(length, elements_length), &if_runtime);
     var_elements = elements;
     var_length = SmiToInt32(CAST(length));
     Goto(&if_done);
@@ -292,11 +292,11 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithSpread(
 
   // Check that the Array.prototype hasn't been modified in a way that would
   // affect iteration.
-  TNode<PropertyCell> protector_cell =
-      CAST(LoadRoot(RootIndex::kArrayIteratorProtector));
-  GotoIf(WordEqual(LoadObjectField(protector_cell, PropertyCell::kValueOffset),
-                   SmiConstant(Isolate::kProtectorInvalid)),
-         &if_generic);
+  TNode<PropertyCell> protector_cell = ArrayIteratorProtectorConstant();
+  GotoIf(
+      TaggedEqual(LoadObjectField(protector_cell, PropertyCell::kValueOffset),
+                  SmiConstant(Isolate::kProtectorInvalid)),
+      &if_generic);
   {
     // The fast-path accesses the {spread} elements directly.
     TNode<Int32T> spread_kind = LoadMapElementsKind(spread_map);
@@ -430,7 +430,7 @@ TNode<JSReceiver> CallOrConstructBuiltinsAssembler::GetCompatibleReceiver(
       //     will be ruled out there).
       //
       var_template = CAST(constructor);
-      TNode<Int32T> template_type = LoadInstanceType(var_template.value());
+      TNode<Uint16T> template_type = LoadInstanceType(var_template.value());
       GotoIf(InstanceTypeEqual(template_type, JS_FUNCTION_TYPE),
              &template_from_closure);
       Branch(InstanceTypeEqual(template_type, MAP_TYPE), &template_map_loop,
@@ -461,7 +461,7 @@ TNode<JSReceiver> CallOrConstructBuiltinsAssembler::GetCompatibleReceiver(
       // end, in which case we continue with the next holder (the
       // hidden prototype) if there's any.
       TNode<HeapObject> current = var_template.value();
-      GotoIf(WordEqual(current, signature), &holder_found);
+      GotoIf(TaggedEqual(current, signature), &holder_found);
 
       GotoIfNot(IsFunctionTemplateInfoMap(LoadMap(current)), &holder_next);
 
@@ -514,7 +514,7 @@ void CallOrConstructBuiltinsAssembler::CallFunctionTemplate(
     GotoIfNot(
         IsSetWord32<Map::IsAccessCheckNeededBit>(LoadMapBitField(receiver_map)),
         &receiver_done);
-    TNode<WordT> function_template_info_flags = LoadAndUntagObjectField(
+    TNode<IntPtrT> function_template_info_flags = LoadAndUntagObjectField(
         function_template_info, FunctionTemplateInfo::kFlagOffset);
     Branch(IsSetWord(function_template_info_flags,
                      1 << FunctionTemplateInfo::kAcceptAnyReceiver),

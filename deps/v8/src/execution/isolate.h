@@ -404,6 +404,7 @@ using DebugObjectCache = std::vector<Handle<HeapObject>>;
   V(ExtensionCallback, wasm_instance_callback, &NoExtension)                   \
   V(WasmStreamingCallback, wasm_streaming_callback, nullptr)                   \
   V(WasmThreadsEnabledCallback, wasm_threads_enabled_callback, nullptr)        \
+  V(WasmLoadSourceMapCallback, wasm_load_source_map_callback, nullptr)         \
   /* State for Relocatable. */                                                 \
   V(Relocatable*, relocatable_top, nullptr)                                    \
   V(DebugObjectCache*, string_stream_debug_object_cache, nullptr)              \
@@ -902,7 +903,7 @@ class Isolate final : private HiddenFactory {
     DCHECK_NOT_NULL(logger_);
     return logger_;
   }
-  StackGuard* stack_guard() { return &stack_guard_; }
+  StackGuard* stack_guard() { return isolate_data()->stack_guard(); }
   Heap* heap() { return &heap_; }
   ReadOnlyHeap* read_only_heap() const { return read_only_heap_; }
   static Isolate* FromHeap(Heap* heap) {
@@ -1473,6 +1474,11 @@ class Isolate final : private HiddenFactory {
 
   bool IsInAnyContext(Object object, uint32_t index);
 
+  void ClearKeptObjects();
+  void SetHostCleanupFinalizationGroupCallback(
+      HostCleanupFinalizationGroupCallback callback);
+  void RunHostCleanupFinalizationGroupCallback(Handle<JSFinalizationGroup> fg);
+
   void SetHostImportModuleDynamicallyCallback(
       HostImportModuleDynamicallyCallback callback);
   V8_EXPORT_PRIVATE MaybeHandle<JSPromise>
@@ -1497,17 +1503,19 @@ class Isolate final : private HiddenFactory {
   // annotate the builtin blob with debugging information.
   void PrepareBuiltinSourcePositionMap();
 
-#if defined(V8_OS_WIN_X64)
+#if defined(V8_OS_WIN64)
   void SetBuiltinUnwindData(
       int builtin_index,
       const win64_unwindinfo::BuiltinUnwindInfo& unwinding_info);
-#endif
+#endif  // V8_OS_WIN64
 
   void SetPrepareStackTraceCallback(PrepareStackTraceCallback callback);
   MaybeHandle<Object> RunPrepareStackTraceCallback(Handle<Context>,
                                                    Handle<JSObject> Error,
                                                    Handle<JSArray> sites);
   bool HasPrepareStackTraceCallback() const;
+
+  void SetAddCrashKeyCallback(AddCrashKeyCallback callback);
 
   void SetRAILMode(RAILMode rail_mode);
 
@@ -1653,6 +1661,8 @@ class Isolate final : private HiddenFactory {
     return "";
   }
 
+  void AddCrashKeysForIsolateAndHeapPointers();
+
   // This class contains a collection of data accessible from both C++ runtime
   // and compiled code (including assembly stubs, builtins, interpreter bytecode
   // handlers and optimized code).
@@ -1673,7 +1683,6 @@ class Isolate final : private HiddenFactory {
   std::shared_ptr<Counters> async_counters_;
   base::RecursiveMutex break_access_;
   Logger* logger_ = nullptr;
-  StackGuard stack_guard_;
   StubCache* load_stub_cache_ = nullptr;
   StubCache* store_stub_cache_ = nullptr;
   DeoptimizerData* deoptimizer_data_ = nullptr;
@@ -1710,6 +1719,8 @@ class Isolate final : private HiddenFactory {
   v8::Isolate::AtomicsWaitCallback atomics_wait_callback_ = nullptr;
   void* atomics_wait_callback_data_ = nullptr;
   PromiseHook promise_hook_ = nullptr;
+  HostCleanupFinalizationGroupCallback
+      host_cleanup_finalization_group_callback_ = nullptr;
   HostImportModuleDynamicallyCallback host_import_module_dynamically_callback_ =
       nullptr;
   HostInitializeImportMetaObjectCallback
@@ -1877,6 +1888,11 @@ class Isolate final : private HiddenFactory {
   base::Mutex thread_data_table_mutex_;
   ThreadDataTable thread_data_table_;
 
+  // Enables the host application to provide a mechanism for recording a
+  // predefined set of data as crash keys to be used in postmortem debugging
+  // in case of a crash.
+  AddCrashKeyCallback add_crash_key_callback_ = nullptr;
+
   // Delete new/delete operators to ensure that Isolate::New() and
   // Isolate::Delete() are used for Isolate creation and deletion.
   void* operator new(size_t, void* ptr) { return ptr; }
@@ -1928,6 +1944,14 @@ class V8_EXPORT_PRIVATE SaveContext {
 class V8_EXPORT_PRIVATE SaveAndSwitchContext : public SaveContext {
  public:
   SaveAndSwitchContext(Isolate* isolate, Context new_context);
+};
+
+// A scope which sets the given isolate's context to null for its lifetime to
+// ensure that code does not make assumptions on a context being available.
+class NullContextScope : public SaveAndSwitchContext {
+ public:
+  explicit NullContextScope(Isolate* isolate)
+      : SaveAndSwitchContext(isolate, Context()) {}
 };
 
 class AssertNoContextChange {

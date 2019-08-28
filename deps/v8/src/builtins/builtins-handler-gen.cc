@@ -66,9 +66,9 @@ void Builtins::Generate_KeyedStoreIC_Megamorphic(
   KeyedStoreGenericGenerator::Generate(state);
 }
 
-void Builtins::Generate_StoreIC_Uninitialized(
+void Builtins::Generate_StoreIC_NoFeedback(
     compiler::CodeAssemblerState* state) {
-  StoreICUninitializedGenerator::Generate(state);
+  StoreICNoFeedbackGenerator::Generate(state);
 }
 
 // TODO(mythria): Check if we can remove feedback vector and slot parameters in
@@ -180,7 +180,7 @@ void HandlerBuiltinsAssembler::DispatchForElementsKindTransition(
   STATIC_ASSERT(arraysize(combined_elements_kinds) ==
                 arraysize(elements_kind_labels));
 
-  TNode<Word32T> combined_elements_kind =
+  TNode<Int32T> combined_elements_kind =
       Word32Or(Word32Shl(from_kind, Int32Constant(kBitsPerByte)), to_kind);
 
   Switch(combined_elements_kind, &if_unknown_type, combined_elements_kinds,
@@ -403,7 +403,7 @@ TF_BUILTIN(LoadIC_FunctionPrototype, CodeStubAssembler) {
   Node* context = Parameter(Descriptor::kContext);
 
   Label miss(this, Label::kDeferred);
-  Return(LoadJSFunctionPrototype(receiver, &miss));
+  Return(LoadJSFunctionPrototype(CAST(receiver), &miss));
 
   BIND(&miss);
   TailCallRuntime(Runtime::kLoadIC_Miss, context, receiver, name, slot, vector);

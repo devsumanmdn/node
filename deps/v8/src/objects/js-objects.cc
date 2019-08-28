@@ -1509,20 +1509,27 @@ namespace {
 
 Maybe<bool> GetPropertyDescriptorWithInterceptor(LookupIterator* it,
                                                  PropertyDescriptor* desc) {
+  Handle<InterceptorInfo> interceptor;
+
   if (it->state() == LookupIterator::ACCESS_CHECK) {
     if (it->HasAccess()) {
       it->Next();
-    } else if (!JSObject::AllCanRead(it) ||
-               it->state() != LookupIterator::INTERCEPTOR) {
-      it->Restart();
-      return Just(false);
+    } else {
+      interceptor = it->GetInterceptorForFailedAccessCheck();
+      if (interceptor.is_null() &&
+          (!JSObject::AllCanRead(it) ||
+           it->state() != LookupIterator::INTERCEPTOR)) {
+        it->Restart();
+        return Just(false);
+      }
     }
   }
 
-  if (it->state() != LookupIterator::INTERCEPTOR) return Just(false);
-
+  if (it->state() == LookupIterator::INTERCEPTOR) {
+    interceptor = it->GetInterceptor();
+  }
+  if (interceptor.is_null()) return Just(false);
   Isolate* isolate = it->isolate();
-  Handle<InterceptorInfo> interceptor = it->GetInterceptor();
   if (interceptor->descriptor().IsUndefined(isolate)) return Just(false);
 
   Handle<Object> result;
@@ -1607,12 +1614,14 @@ Maybe<bool> JSReceiver::GetOwnPropertyDescriptor(LookupIterator* it,
     // 6. Else X is an accessor property, so
     Handle<AccessorPair> accessors =
         Handle<AccessorPair>::cast(it->GetAccessors());
+    Handle<NativeContext> native_context =
+        it->GetHolder<JSReceiver>()->GetCreationContext();
     // 6a. Set D.[[Get]] to the value of X's [[Get]] attribute.
-    desc->set_get(
-        AccessorPair::GetComponent(isolate, accessors, ACCESSOR_GETTER));
+    desc->set_get(AccessorPair::GetComponent(isolate, native_context, accessors,
+                                             ACCESSOR_GETTER));
     // 6b. Set D.[[Set]] to the value of X's [[Set]] attribute.
-    desc->set_set(
-        AccessorPair::GetComponent(isolate, accessors, ACCESSOR_SETTER));
+    desc->set_set(AccessorPair::GetComponent(isolate, native_context, accessors,
+                                             ACCESSOR_SETTER));
   }
 
   // 7. Set D.[[Enumerable]] to the value of X's [[Enumerable]] attribute.
@@ -2622,12 +2631,12 @@ void MigrateFastToFast(Isolate* isolate, Handle<JSObject> object,
         FieldIndex::ForDescriptor(isolate, *new_map, new_map->LastAdded());
     if (index.is_inobject() || index.outobject_array_index() <
                                    object->property_array(isolate).length()) {
-      // We still need to allocate MutableHeapNumbers for double fields
+      // We still need to allocate HeapNumbers for double fields
       // if either double field unboxing is disabled or the double field
       // is in the PropertyArray backing store (where we don't support
       // double field unboxing).
       if (index.is_double() && !new_map->IsUnboxedDoubleField(isolate, index)) {
-        auto value = isolate->factory()->NewMutableHeapNumberWithHoleNaN();
+        auto value = isolate->factory()->NewHeapNumberWithHoleNaN();
         object->RawFastPropertyAtPut(index, *value);
       }
       object->synchronized_set_map(*new_map);
@@ -2644,7 +2653,7 @@ void MigrateFastToFast(Isolate* isolate, Handle<JSObject> object,
     // Properly initialize newly added property.
     Handle<Object> value;
     if (details.representation().IsDouble()) {
-      value = isolate->factory()->NewMutableHeapNumberWithHoleNaN();
+      value = isolate->factory()->NewHeapNumberWithHoleNaN();
     } else {
       value = isolate->factory()->uninitialized_value();
     }
@@ -2708,7 +2717,7 @@ void MigrateFastToFast(Isolate* isolate, Handle<JSObject> object,
         // must already be prepared for data of certain type.
         DCHECK(!details.representation().IsNone());
         if (details.representation().IsDouble()) {
-          value = isolate->factory()->NewMutableHeapNumberWithHoleNaN();
+          value = isolate->factory()->NewHeapNumberWithHoleNaN();
         } else {
           value = isolate->factory()->uninitialized_value();
         }
@@ -2722,11 +2731,7 @@ void MigrateFastToFast(Isolate* isolate, Handle<JSObject> object,
       FieldIndex index = FieldIndex::ForDescriptor(isolate, *old_map, i);
       if (object->IsUnboxedDoubleField(isolate, index)) {
         uint64_t old_bits = object->RawFastDoublePropertyAsBitsAt(index);
-        if (representation.IsDouble()) {
-          value = isolate->factory()->NewMutableHeapNumberFromBits(old_bits);
-        } else {
-          value = isolate->factory()->NewHeapNumberFromBits(old_bits);
-        }
+        value = isolate->factory()->NewHeapNumberFromBits(old_bits);
       } else {
         value = handle(object->RawFastPropertyAt(isolate, index), isolate);
         if (!old_representation.IsDouble() && representation.IsDouble()) {
@@ -2754,7 +2759,7 @@ void MigrateFastToFast(Isolate* isolate, Handle<JSObject> object,
     DCHECK_EQ(kData, details.kind());
     Handle<Object> value;
     if (details.representation().IsDouble()) {
-      value = isolate->factory()->NewMutableHeapNumberWithHoleNaN();
+      value = isolate->factory()->NewHeapNumberWithHoleNaN();
     } else {
       value = isolate->factory()->uninitialized_value();
     }
@@ -2784,10 +2789,10 @@ void MigrateFastToFast(Isolate* isolate, Handle<JSObject> object,
     // Can't use JSObject::FastPropertyAtPut() because proper map was not set
     // yet.
     if (new_map->IsUnboxedDoubleField(isolate, index)) {
-      DCHECK(value.IsMutableHeapNumber(isolate));
+      DCHECK(value.IsHeapNumber(isolate));
       // Ensure that all bits of the double value are preserved.
       object->RawFastDoublePropertyAsBitsAtPut(
-          index, MutableHeapNumber::cast(value).value_as_bits());
+          index, HeapNumber::cast(value).value_as_bits());
       if (i < old_number_of_fields && !old_map->IsUnboxedDoubleField(index)) {
         // Transition from tagged to untagged slot.
         heap->ClearRecordedSlot(*object, object->RawField(index.offset()));
@@ -2859,8 +2864,8 @@ void MigrateFastToSlow(Isolate* isolate, Handle<JSObject> object,
         } else {
           value = handle(object->RawFastPropertyAt(isolate, index), isolate);
           if (details.representation().IsDouble()) {
-            DCHECK(value->IsMutableHeapNumber(isolate));
-            double old_value = Handle<MutableHeapNumber>::cast(value)->value();
+            DCHECK(value->IsHeapNumber(isolate));
+            double old_value = Handle<HeapNumber>::cast(value)->value();
             value = isolate->factory()->NewHeapNumber(old_value);
           }
         }
@@ -3048,7 +3053,7 @@ void JSObject::AllocateStorageForMap(Handle<JSObject> object, Handle<Map> map) {
       if (!representation.IsDouble()) continue;
       FieldIndex index = FieldIndex::ForDescriptor(*map, i);
       if (map->IsUnboxedDoubleField(index)) continue;
-      auto box = isolate->factory()->NewMutableHeapNumberWithHoleNaN();
+      auto box = isolate->factory()->NewHeapNumberWithHoleNaN();
       if (index.is_inobject()) {
         storage->set(index.property_index(), *box);
       } else {
@@ -4146,7 +4151,7 @@ Object JSObject::SlowReverseLookup(Object value) {
         } else {
           Object property = RawFastPropertyAt(field_index);
           if (field_index.is_double()) {
-            DCHECK(property.IsMutableHeapNumber());
+            DCHECK(property.IsHeapNumber());
             if (value_is_number && property.Number() == value.Number()) {
               return descs.GetKey(i);
             }
@@ -4987,13 +4992,9 @@ void JSFunction::InitializeFeedbackCell(Handle<JSFunction> function) {
   Isolate* const isolate = function->GetIsolate();
 
   if (function->has_feedback_vector()) {
-    // TODO(984344): Make this a CHECK that feedback vectors are identical to
-    // what we expect once we have removed all bytecode generation differences
-    // between eager and lazy compilation. For now just reset if they aren't
-    // identical
-    FeedbackVector vector = function->feedback_vector();
-    if (vector.length() == vector.metadata().slot_count()) return;
-    function->raw_feedback_cell().reset();
+    CHECK_EQ(function->feedback_vector().length(),
+             function->feedback_vector().metadata().slot_count());
+    return;
   }
 
   bool needs_feedback_vector = !FLAG_lazy_feedback_allocation;
@@ -5241,7 +5242,6 @@ bool CanSubclassHaveInobjectProperties(InstanceType instance_type) {
     case JS_GLOBAL_PROXY_TYPE:
     case JS_PROXY_TYPE:
     case MAP_TYPE:
-    case MUTABLE_HEAP_NUMBER_TYPE:
     case ODDBALL_TYPE:
     case PROPERTY_CELL_TYPE:
     case SHARED_FUNCTION_INFO_TYPE:

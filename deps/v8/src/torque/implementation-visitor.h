@@ -12,6 +12,7 @@
 #include "src/torque/cfg.h"
 #include "src/torque/declarations.h"
 #include "src/torque/global-context.h"
+#include "src/torque/type-oracle.h"
 #include "src/torque/types.h"
 #include "src/torque/utils.h"
 
@@ -52,7 +53,8 @@ class LocationReference {
   // pointer.
   static LocationReference HeapReference(VisitResult heap_reference) {
     LocationReference result;
-    DCHECK(heap_reference.type()->IsReferenceType());
+    DCHECK(StructType::MatchUnaryGeneric(heap_reference.type(),
+                                         TypeOracle::GetReferenceGeneric()));
     result.heap_reference_ = std::move(heap_reference);
     return result;
   }
@@ -112,7 +114,8 @@ class LocationReference {
 
   const Type* ReferencedType() const {
     if (IsHeapReference()) {
-      return ReferenceType::cast(heap_reference().type())->referenced_type();
+      return *StructType::MatchUnaryGeneric(heap_reference().type(),
+                                            TypeOracle::GetReferenceGeneric());
     }
     return GetVisitResult().type();
   }
@@ -354,6 +357,7 @@ class ImplementationVisitor {
   void GenerateClassDefinitions(const std::string& output_directory);
   void GenerateInstanceTypes(const std::string& output_directory);
   void GenerateClassVerifiers(const std::string& output_directory);
+  void GenerateClassDebugReaders(const std::string& output_directory);
   void GenerateExportedMacrosAssembler(const std::string& output_directory);
   void GenerateCSATypes(const std::string& output_directory);
   void GenerateCppForInternalClasses(const std::string& output_directory);
@@ -361,27 +365,26 @@ class ImplementationVisitor {
   VisitResult Visit(Expression* expr);
   const Type* Visit(Statement* stmt);
 
+  void CheckInitializersWellformed(
+      const std::string& aggregate_name,
+      const std::vector<Field>& aggregate_fields,
+      const std::vector<NameAndExpression>& initializers,
+      bool ignore_first_field = false);
+
   InitializerResults VisitInitializerResults(
-      const AggregateType* aggregate,
+      const ClassType* class_type,
       const std::vector<NameAndExpression>& expressions);
 
   void InitializeFieldFromSpread(VisitResult object, const Field& field,
                                  const InitializerResults& initializer_results);
 
-  size_t InitializeAggregateHelper(
-      const AggregateType* aggregate_type, VisitResult allocate_result,
-      const InitializerResults& initializer_results);
-
   VisitResult AddVariableObjectSize(
       VisitResult object_size, const ClassType* current_class,
       const InitializerResults& initializer_results);
 
-  void InitializeAggregate(const AggregateType* aggregate_type,
-                           VisitResult allocate_result,
-                           const InitializerResults& initializer_results);
+  void InitializeClass(const ClassType* class_type, VisitResult allocate_result,
+                       const InitializerResults& initializer_results);
 
-  VisitResult TemporaryUninitializedStruct(const StructType* struct_type,
-                                           const std::string& reason);
   VisitResult Visit(StructExpression* decl);
 
   LocationReference GetLocationReference(Expression* location);
@@ -608,9 +611,8 @@ class ImplementationVisitor {
   void GenerateBranch(const VisitResult& condition, Block* true_block,
                       Block* false_block);
 
-  using VisitResultGenerator = std::function<VisitResult()>;
-  void GenerateExpressionBranch(VisitResultGenerator, Block* true_block,
-                                Block* false_block);
+  VisitResult GenerateBoolConstant(bool constant);
+
   void GenerateExpressionBranch(Expression* expression, Block* true_block,
                                 Block* false_block);
 

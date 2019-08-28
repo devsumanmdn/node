@@ -194,6 +194,9 @@
   'wasm/compare-exchange-stress': [PASS, SLOW, NO_VARIANTS],
   'wasm/compare-exchange64-stress': [PASS, SLOW, NO_VARIANTS],
 
+  # worker creation/shutdown is very slow in debug mode
+  'd8/d8-worker-shutdown*': [PASS, ['mode == debug', SLOW], ['no_snap', SKIP]],
+
   # case-insensitive unicode regexp relies on case mapping provided by ICU.
   'es6/unicode-regexp-ignore-case': [PASS, ['no_i18n == True', FAIL]],
   'es6/unicode-regexp-ignore-case-noi18n': [FAIL, ['no_i18n == True', PASS]],
@@ -396,6 +399,10 @@
   'tools/compiler-trace-flags': [SKIP],
   'tools/compiler-trace-flags-wasm': [SKIP],
 
+  # Too slow on arm64 simulator and debug: https://crbug.com/v8/7783
+  'bit-not': [PASS, ['arch == arm64 and mode == debug and simulator_run', SKIP]],
+  'md5': [PASS, ['arch == arm64 and mode == debug and simulator_run', SKIP]],
+
   # Slow with pointer compression.
   'regress/regress-crbug-319860': [PASS, ['pointer_compression', SLOW]],
 }],  # 'lite_mode or variant == jitless'
@@ -405,6 +412,7 @@
   # Tests too slow in non-optimized debug mode.
   'compiler/regress-9017': [SKIP],
   'regress/regress-2790': [SKIP],
+  'regress/regress-331444': [SKIP],
   'regress/regress-740784': [SKIP],
 }],  # 'is_full_debug'
 
@@ -490,6 +498,9 @@
 
   # BUG(v8:9256). Slow with pointer compression.
   'regress/regress-708247': [PASS, ['pointer_compression', SLOW]],
+  'es6/array-concat': [PASS, ['pointer_compression', SLOW]],
+  'non-extensible-array-reduce': [PASS, ['pointer_compression', SLOW]],
+  'regress/regress-454725': [PASS, ['pointer_compression', SLOW]],
 }],  # 'arch == arm64'
 
 ['arch == arm64 and mode == debug and simulator_run', {
@@ -861,6 +872,7 @@
   # Tests that fail some assertions due to checking internal state sensitive
   # to GC.
   'compiler/native-context-specialization-hole-check': [SKIP],
+  'opt-elements-kind': [SKIP],
   'regress/regress-trap-allocation-memento': [SKIP],
   'regress/regress-v8-9267-*': [SKIP],
   'shared-function-tier-up-turbo': [SKIP],
@@ -890,6 +902,8 @@
   # Skip tests that are known to be non-deterministic.
   'd8/d8-worker-sharedarraybuffer': [SKIP],
   'd8/d8-os': [SKIP],
+  'd8/d8-worker-shutdown': [SKIP],
+  'd8/d8-worker-shutdown-gc': [SKIP],
   'harmony/futex': [SKIP],
 
   # BUG(v8:7166).
@@ -1065,14 +1079,6 @@
 }], # arch == x64
 
 ##############################################################################
-['arch in [arm, android_arm, android_ia32, ia32, ppc, s390, s390x, mipsel, mips]', {
-  # TODO(ssauleau): implement BigInt<>Wasm conversion for other arch -
-  # crbug.com/v8/7741
-  'wasm/bigint': [SKIP],
-  'wasm/bigint-i64-to-imported-js-func': [SKIP],
-}], # arch in [arm, android_arm, android_ia32, ia32, ppc, s390, s390x, mipsel, mips]
-
-##############################################################################
 ['arch not in [x64, arm, arm64] or system != linux', {
   # Unwinding info writer is only supported on x64, arm, and arm64 Linux
   'regress/regress-913844': [SKIP],
@@ -1082,5 +1088,10 @@
 ['variant == jitless and not embedded_builtins', {
   '*': [SKIP],
 }], # variant == jitless and not embedded_builtins
+
+['not embedded_builtins', {
+  # Explicitly sets jitless flag.
+  'regress/regress-992389': [SKIP],
+}], # not embedded_builtins
 
 ]

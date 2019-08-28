@@ -333,7 +333,6 @@ VisitorId Map::GetVisitorId(Map map) {
     case FILLER_TYPE:
     case FOREIGN_TYPE:
     case HEAP_NUMBER_TYPE:
-    case MUTABLE_HEAP_NUMBER_TYPE:
     case FEEDBACK_METADATA_TYPE:
       return kVisitDataObject;
 
@@ -788,7 +787,8 @@ void Map::GeneralizeField(Isolate* isolate, Handle<Map> map, int modify_index,
     map->PrintGeneralization(
         isolate, stdout, "field type generalization", modify_index,
         map->NumberOfOwnDescriptors(), map->NumberOfOwnDescriptors(), false,
-        details.representation(), details.representation(), old_constness,
+        details.representation(),
+        descriptors->GetDetails(modify_index).representation(), old_constness,
         new_constness, old_field_type, MaybeHandle<Object>(), new_field_type,
         MaybeHandle<Object>());
   }
@@ -1730,6 +1730,12 @@ Handle<Map> Map::CopyReplaceDescriptors(
       descriptors->GeneralizeAllFields();
       result->InitializeDescriptors(isolate, *descriptors,
                                     LayoutDescriptor::FastPointerLayout());
+      // If we were trying to insert a transition but failed because there are
+      // too many transitions already, mark the object as a prototype to avoid
+      // tracking transitions from the detached map.
+      if (flag == INSERT_TRANSITION) {
+        result->set_is_prototype_map(true);
+      }
     }
   } else {
     result->InitializeDescriptors(isolate, *descriptors, *layout_descriptor);

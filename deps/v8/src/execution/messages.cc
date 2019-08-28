@@ -314,6 +314,10 @@ Handle<Object> StackFrameBase::GetWasmModuleName() {
   return isolate_->factory()->undefined_value();
 }
 
+Handle<Object> StackFrameBase::GetWasmInstance() {
+  return isolate_->factory()->undefined_value();
+}
+
 int StackFrameBase::GetScriptId() const {
   if (!HasScript()) return kNone;
   return GetScript()->id();
@@ -332,6 +336,7 @@ void JSStackFrame::FromFrameArray(Isolate* isolate, Handle<FrameArray> array,
   function_ = handle(array->Function(frame_ix), isolate);
   code_ = handle(array->Code(frame_ix), isolate);
   offset_ = array->Offset(frame_ix).value();
+  cached_position_ = base::nullopt;
 
   const int flags = array->Flags(frame_ix).value();
   is_constructor_ = (flags & FrameArray::kIsConstructor) != 0;
@@ -348,6 +353,7 @@ JSStackFrame::JSStackFrame(Isolate* isolate, Handle<Object> receiver,
       function_(function),
       code_(code),
       offset_(offset),
+      cached_position_(base::nullopt),
       is_async_(false),
       is_constructor_(false),
       is_strict_(false) {}
@@ -512,9 +518,12 @@ bool JSStackFrame::IsToplevel() {
 }
 
 int JSStackFrame::GetPosition() const {
+  if (cached_position_) return *cached_position_;
+
   Handle<SharedFunctionInfo> shared = handle(function_->shared(), isolate_);
   SharedFunctionInfo::EnsureSourcePositionsAvailable(isolate_, shared);
-  return code_->SourcePosition(offset_);
+  cached_position_ = code_->SourcePosition(offset_);
+  return *cached_position_;
 }
 
 bool JSStackFrame::HasScript() const {
@@ -574,6 +583,8 @@ Handle<Object> WasmStackFrame::GetWasmModuleName() {
   }
   return module_name;
 }
+
+Handle<Object> WasmStackFrame::GetWasmInstance() { return wasm_instance_; }
 
 int WasmStackFrame::GetPosition() const {
   return IsInterpreted()

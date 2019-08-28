@@ -164,9 +164,6 @@ void HeapObject::HeapObjectVerify(Isolate* isolate) {
     case HEAP_NUMBER_TYPE:
       CHECK(IsHeapNumber());
       break;
-    case MUTABLE_HEAP_NUMBER_TYPE:
-      CHECK(IsMutableHeapNumber());
-      break;
     case BIGINT_TYPE:
       BigInt::cast(*this).BigIntVerify(isolate);
       break;
@@ -582,7 +579,7 @@ void JSObject::JSObjectVerify(Isolate* isolate) {
       // There are two reasons why this can happen:
       // - in the middle of StoreTransitionStub when the new extended backing
       //   store is already set into the object and the allocation of the
-      //   MutableHeapNumber triggers GC while the map isn't updated yet.
+      //   HeapNumber triggers GC while the map isn't updated yet.
       // - deletion of the last property can leave additional backing store
       //   capacity behind.
       CHECK_GT(actual_unused_property_fields, map().UnusedPropertyFields());
@@ -607,7 +604,7 @@ void JSObject::JSObjectVerify(Isolate* isolate) {
           VerifyObjectField(isolate, index.offset());
         }
         Object value = RawFastPropertyAt(index);
-        if (r.IsDouble()) DCHECK(value.IsMutableHeapNumber());
+        if (r.IsDouble()) DCHECK(value.IsHeapNumber());
         if (value.IsUninitialized(isolate)) continue;
         if (r.IsSmi()) DCHECK(value.IsSmi());
         if (r.IsHeapObject()) DCHECK(value.IsHeapObject());
@@ -1301,12 +1298,6 @@ void JSFinalizationGroupCleanupIterator::
   VerifyHeapPointer(isolate, finalization_group());
 }
 
-void FinalizationGroupCleanupJobTask::FinalizationGroupCleanupJobTaskVerify(
-    Isolate* isolate) {
-  CHECK(IsFinalizationGroupCleanupJobTask());
-  CHECK(finalization_group().IsJSFinalizationGroup());
-}
-
 void JSWeakMap::JSWeakMapVerify(Isolate* isolate) {
   TorqueGeneratedClassVerifiers::JSWeakMapVerify(*this, isolate);
   CHECK(table().IsEphemeronHashTable() || table().IsUndefined(isolate));
@@ -1456,7 +1447,8 @@ void JSRegExp::JSRegExpVerify(Isolate* isolate) {
       break;
     }
     case JSRegExp::IRREGEXP: {
-      bool is_native = RegExp::GeneratesNativeCode();
+      bool can_be_native = RegExp::CanGenerateNativeCode();
+      bool can_be_interpreted = RegExp::CanGenerateBytecode();
 
       FixedArray arr = FixedArray::cast(data());
       Object one_byte_data = arr.get(JSRegExp::kIrregexpLatin1CodeIndex);
@@ -1464,14 +1456,17 @@ void JSRegExp::JSRegExpVerify(Isolate* isolate) {
       // Code/ByteArray: Compiled code.
       CHECK((one_byte_data.IsSmi() &&
              Smi::ToInt(one_byte_data) == JSRegExp::kUninitializedValue) ||
-            (is_native ? one_byte_data.IsCode() : one_byte_data.IsByteArray()));
+            (can_be_interpreted && one_byte_data.IsByteArray()) ||
+            (can_be_native && one_byte_data.IsCode()));
       Object uc16_data = arr.get(JSRegExp::kIrregexpUC16CodeIndex);
       CHECK((uc16_data.IsSmi() &&
              Smi::ToInt(uc16_data) == JSRegExp::kUninitializedValue) ||
-            (is_native ? uc16_data.IsCode() : uc16_data.IsByteArray()));
+            (can_be_interpreted && uc16_data.IsByteArray()) ||
+            (can_be_native && uc16_data.IsCode()));
 
       CHECK(arr.get(JSRegExp::kIrregexpCaptureCountIndex).IsSmi());
       CHECK(arr.get(JSRegExp::kIrregexpMaxRegisterCountIndex).IsSmi());
+      CHECK(arr.get(JSRegExp::kIrregexpTierUpTicksIndex).IsSmi());
       break;
     }
     default:

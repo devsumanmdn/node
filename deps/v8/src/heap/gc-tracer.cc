@@ -391,6 +391,12 @@ void GCTracer::NotifySweepingCompleted() {
                  "FreeLists statistics after sweeping completed:\n");
     heap_->PrintFreeListsStats();
   }
+  if (FLAG_trace_allocations_origins) {
+    heap_->new_space()->PrintAllocationsOrigins();
+    heap_->old_space()->PrintAllocationsOrigins();
+    heap_->code_space()->PrintAllocationsOrigins();
+    heap_->map_space()->PrintAllocationsOrigins();
+  }
 }
 
 void GCTracer::SampleAllocation(double current_ms,
@@ -1197,10 +1203,7 @@ void GCTracer::RecordGCPhasesHistograms(TimedHistogram* gc_timer) {
       DCHECK_GT(overall_marking_time, 0.0);
       const double overall_v8_marking_time =
           overall_marking_time -
-          current_.scopes[Scope::MC_MARK_EMBEDDER_PROLOGUE] -
-          current_.scopes[Scope::MC_MARK_EMBEDDER_TRACING] -
-          current_.scopes[Scope::MC_INCREMENTAL_EMBEDDER_PROLOGUE] -
-          current_.scopes[Scope::MC_INCREMENTAL_EMBEDDER_TRACING];
+          current_.scopes[Scope::MC_MARK_EMBEDDER_TRACING];
       DCHECK_GT(overall_v8_marking_time, 0.0);
       const int main_thread_marking_throughput_mb_per_s =
           static_cast<int>(static_cast<double>(heap_->SizeOfObjects()) /

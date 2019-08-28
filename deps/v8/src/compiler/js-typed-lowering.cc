@@ -200,14 +200,14 @@ class JSBinopReduction final {
   void CheckInputsToString() {
     if (!left_type().Is(Type::String())) {
       Node* left_input =
-          graph()->NewNode(simplified()->CheckString(VectorSlotPair()), left(),
+          graph()->NewNode(simplified()->CheckString(FeedbackSource()), left(),
                            effect(), control());
       node_->ReplaceInput(0, left_input);
       update_effect(left_input);
     }
     if (!right_type().Is(Type::String())) {
       Node* right_input =
-          graph()->NewNode(simplified()->CheckString(VectorSlotPair()), right(),
+          graph()->NewNode(simplified()->CheckString(FeedbackSource()), right(),
                            effect(), control());
       node_->ReplaceInput(1, right_input);
       update_effect(right_input);
@@ -576,7 +576,7 @@ Reduction JSTypedLowering::ReduceJSAdd(Node* node) {
       // and thus potentially reduces the number of live ranges and allows for
       // more truncations.
       length = effect = graph()->NewNode(
-          simplified()->CheckBounds(VectorSlotPair()), length,
+          simplified()->CheckBounds(FeedbackSource()), length,
           jsgraph()->Constant(String::kMaxLength + 1), effect, control);
     } else {
       // Check if we would overflow the allowed maximum string length.
@@ -1320,7 +1320,7 @@ Reduction JSTypedLowering::ReduceJSLoadContext(Node* node) {
   for (size_t i = 0; i < access.depth(); ++i) {
     context = effect = graph()->NewNode(
         simplified()->LoadField(
-            AccessBuilder::ForContextSlot(Context::PREVIOUS_INDEX)),
+            AccessBuilder::ForContextSlotKnownPointer(Context::PREVIOUS_INDEX)),
         context, effect, control);
   }
   node->ReplaceInput(0, context);
@@ -1342,7 +1342,7 @@ Reduction JSTypedLowering::ReduceJSStoreContext(Node* node) {
   for (size_t i = 0; i < access.depth(); ++i) {
     context = effect = graph()->NewNode(
         simplified()->LoadField(
-            AccessBuilder::ForContextSlot(Context::PREVIOUS_INDEX)),
+            AccessBuilder::ForContextSlotKnownPointer(Context::PREVIOUS_INDEX)),
         context, effect, control);
   }
   node->ReplaceInput(0, context);
@@ -1367,8 +1367,8 @@ Node* JSTypedLowering::BuildGetModuleCell(Node* node) {
   if (module_type.IsHeapConstant()) {
     SourceTextModuleRef module_constant =
         module_type.AsHeapConstant()->Ref().AsSourceTextModule();
-    CellRef cell_constant = module_constant.GetCell(cell_index);
-    return jsgraph()->Constant(cell_constant);
+    base::Optional<CellRef> cell_constant = module_constant.GetCell(cell_index);
+    if (cell_constant.has_value()) return jsgraph()->Constant(*cell_constant);
   }
 
   FieldAccess field_access;

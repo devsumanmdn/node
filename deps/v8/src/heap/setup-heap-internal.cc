@@ -358,8 +358,6 @@ bool Heap::CreateInitialMaps() {
     ALLOCATE_VARSIZE_MAP(FEEDBACK_VECTOR_TYPE, feedback_vector)
     ALLOCATE_PRIMITIVE_MAP(HEAP_NUMBER_TYPE, HeapNumber::kSize, heap_number,
                            Context::NUMBER_FUNCTION_INDEX)
-    ALLOCATE_MAP(MUTABLE_HEAP_NUMBER_TYPE, MutableHeapNumber::kSize,
-                 mutable_heap_number)
     ALLOCATE_PRIMITIVE_MAP(SYMBOL_TYPE, Symbol::kSize, symbol,
                            Context::SYMBOL_FUNCTION_INDEX)
     ALLOCATE_MAP(FOREIGN_TYPE, Foreign::kSize, foreign)
@@ -824,6 +822,15 @@ void Heap::CreateInitialObjects() {
   Handle<FeedbackMetadata> empty_feedback_metadata =
       factory->NewFeedbackMetadata(0, 0, AllocationType::kReadOnly);
   set_empty_feedback_metadata(*empty_feedback_metadata);
+
+  // Canonical scope arrays.
+  Handle<ScopeInfo> global_this_binding =
+      ScopeInfo::CreateGlobalThisBinding(isolate());
+  set_global_this_binding_scope_info(*global_this_binding);
+
+  Handle<ScopeInfo> empty_function =
+      ScopeInfo::CreateForEmptyFunction(isolate());
+  set_empty_function_scope_info(*empty_function);
 
   // Allocate the empty script.
   Handle<Script> script = factory->NewScript(factory->empty_string());
